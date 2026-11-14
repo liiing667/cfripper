@@ -5,6 +5,36 @@ from pydantic import BaseModel, ConfigDict
 from cfripper.model.enums import RuleGranularity, RuleMode, RuleRisk
 
 
+class ResultException(BaseModel):
+    """A rule that crashed instead of returning a verdict.
+
+    Carries the rule name so reports can point at the check that did not
+    finish; the original exception is kept as strings so the model stays
+    JSON-serialisable and stable across runs.
+    """
+
+    rule: str
+    exception_type: str
+    exception_message: str
+
+    model_config = ConfigDict(extra="forbid")
+
+    @classmethod
+    def from_exception(cls, rule: str, ex: Exception) -> "ResultException":
+        return cls(
+            rule=rule,
+            exception_type=type(ex).__name__,
+            exception_message=str(ex),
+        )
+
+    def serializable(self):
+        return {
+            "rule": self.rule,
+            "exception_type": self.exception_type,
+            "exception_message": self.exception_message,
+        }
+
+
 class Failure(BaseModel):
     granularity: RuleGranularity
     reason: str
@@ -33,7 +63,7 @@ class Failure(BaseModel):
 class Result(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    exceptions: List[Exception] = []
+    exceptions: List[ResultException] = []
     failures: List[Failure] = []
 
     def get_failures(
@@ -49,8 +79,8 @@ class Result(BaseModel):
                 result.append(failure)
         return result
 
-    def add_exception(self, ex: Exception):
-        self.exceptions.append(ex)
+    def add_exception(self, rule: str, ex: Exception):
+        self.exceptions.append(ResultException.from_exception(rule, ex))
 
     def add_failure(
         self,
@@ -78,7 +108,11 @@ class Result(BaseModel):
 
     @property
     def valid(self) -> bool:
-        return not any(failure for failure in self.failures if failure.rule_mode == RuleMode.BLOCKING)
+        # Fail closed: a rule that crashed means the scan did not finish, so the
+        # result cannot be reported as "no violations", even without blocking
+        # failures.
+        no_blocking_failures = not any(failure for failure in self.failures if failure.rule_mode == RuleMode.BLOCKING)
+        return no_blocking_failures and not self.exceptions
 
     def __add__(self, other):
         if not isinstance(other, self.__class__):

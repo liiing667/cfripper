@@ -3,7 +3,7 @@ from typing import List, Set, Tuple
 import pytest
 
 from cfripper.model.enums import RuleGranularity, RuleMode, RuleRisk
-from cfripper.model.result import Failure, Result
+from cfripper.model.result import Failure, Result, ResultException
 from tests.utils import compare_lists_of_failures
 
 
@@ -24,6 +24,38 @@ def test_result_valid_after_removing_failures():
     assert result.valid is True
 
 
+def test_result_is_invalid_when_a_rule_crashed_even_without_blocking_failures():
+    result = Result()
+
+    # A clean-looking scan (no failures at all) is still invalid when a rule
+    # crashed, because "no violations" must not be confused with "scan finished".
+    assert result.valid is True
+
+    result.add_exception("CrashingRule", RuntimeError("boom"))
+
+    assert result.valid is False
+    assert result.exceptions == [
+        ResultException(
+            rule="CrashingRule",
+            exception_type="RuntimeError",
+            exception_message="boom",
+        )
+    ]
+
+
+def test_result_exception_is_serializable_with_rule_name():
+    result = Result()
+    result.add_exception("CrashingRule", ValueError("bad input"))
+
+    assert result.exceptions[0].serializable() == {
+        "rule": "CrashingRule",
+        "exception_type": "ValueError",
+        "exception_message": "bad input",
+    }
+    # The outcome must be stable JSON, so it survives a report serialisation round trip.
+    assert Result.model_validate_json(result.model_dump_json()).exceptions == result.exceptions
+
+
 def test_result_addition():
     failure1 = Failure(
         granularity=RuleGranularity.STACK,
@@ -42,6 +74,18 @@ def test_result_addition():
     result1 = Result(failures=[failure1])
     result2 = Result(failures=[failure2])
     assert result1 + result2 == Result(failures=[failure1, failure2])
+
+
+def test_result_addition_keeps_exceptions_from_both_sides():
+    result1 = Result()
+    result1.add_exception("RuleOne", RuntimeError("boom one"))
+    result2 = Result()
+    result2.add_exception("RuleTwo", ValueError("boom two"))
+
+    combined = result1 + result2
+
+    assert [exception.rule for exception in combined.exceptions] == ["RuleOne", "RuleTwo"]
+    assert combined.valid is False
 
 
 @pytest.mark.parametrize(

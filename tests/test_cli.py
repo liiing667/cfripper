@@ -6,7 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 import cfripper.cli as undertest
-from cfripper.cli import format_result, format_result_junit
+from cfripper.cli import format_result, format_result_junit, format_result_txt
 from cfripper.model.enums import RuleGranularity, RuleMode, RuleRisk
 from cfripper.model.result import Result
 from tests.utils import FIXTURE_ROOT_PATH
@@ -59,7 +59,7 @@ def test_validate_aws_principals(
 
 @patch("cfripper.cli.process_template")
 def test_aws_account_id_cli_option(patched_process_template: MagicMock):
-    patched_process_template.return_value = True
+    patched_process_template.return_value = Result()
     test_template_path = str(FIXTURE_ROOT_PATH) + "/others/iam_role.json"
     fake_aws_account_id = "123456789012"
 
@@ -72,7 +72,7 @@ def test_aws_account_id_cli_option(patched_process_template: MagicMock):
 
 @patch("cfripper.cli.process_template")
 def test_aws_principles_cli_option(patched_process_template: MagicMock):
-    patched_process_template.return_value = True
+    patched_process_template.return_value = Result()
     test_template_path = str(FIXTURE_ROOT_PATH) + "/others/iam_role.json"
     fake_aws_principals = ["123456789012", "234567890123"]
 
@@ -189,10 +189,11 @@ def test_format_result_junit_reports_exceptions_as_errors():
     """An exception is the scan failing, not a rule violation — hence <error>."""
     # Given a result carrying one exception.
     result = Result()
-    result.add_exception(ValueError("could not parse template"))
+    result.add_exception("CrashingRule", ValueError("could not parse template"))
 
     # When it is rendered as JUnit and re-parsed.
     root = ET.fromstring(format_result_junit(result))
+    case = root.find("testcase")
     error = root.find("testcase").find("error")
 
     # Then the exception is reported as an error rather than a failure.
@@ -200,6 +201,8 @@ def test_format_result_junit_reports_exceptions_as_errors():
     assert root.attrib["failures"] == "0"
     assert error is not None
     assert error.attrib["type"] == "ValueError"
+    assert "CrashingRule" in case.attrib["name"]
+    assert "rule: CrashingRule" in error.text
 
 
 def test_format_result_dispatches_junit(result_with_failures: Result):
@@ -218,7 +221,7 @@ def test_cli_accepts_junit_format_and_names_the_suite_after_the_template():
     template = FIXTURE_ROOT_PATH / "others" / "iam_policy_on_user.json"
     runner = CliRunner()
     with patch("cfripper.cli.process_template") as patched:
-        patched.return_value = True
+        patched.return_value = Result()
         result = runner.invoke(undertest.cli, [str(template), "--format", "junit"])
     output_format = patched.call_args[1]["output_format"]
 
@@ -227,3 +230,80 @@ def test_cli_accepts_junit_format_and_names_the_suite_after_the_template():
     # so a report from several templates stays readable.
     assert result.exit_code == 0, result.output
     assert output_format == "junit"
+
+
+# --- Fail-closed outcome when a rule crashes -------------------------------
+
+
+def test_format_result_txt_reports_exceptions_with_rule_name():
+    # Given a result whose rule crashed without producing a failure.
+    result = Result()
+    result.add_exception("CrashingRule", RuntimeError("boom"))
+
+    # When the result is rendered as text.
+    output = format_result_txt(result)
+
+    # Then the crashed rule is named and the scan is reported as invalid.
+    assert "Valid: False" in output
+    assert "CrashingRule: RuntimeError: boom" in output
+
+
+def test_cli_exit_code_0_when_scan_is_clean():
+    template = FIXTURE_ROOT_PATH / "others" / "iam_role.json"
+    runner = CliRunner()
+    with patch("cfripper.cli.process_template") as patched:
+        patched.return_value = Result()
+        result = runner.invoke(undertest.cli, [str(template)])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_cli_exit_code_2_when_blocking_failure_but_scan_finished():
+    template = FIXTURE_ROOT_PATH / "others" / "iam_role.json"
+    failing_result = Result()
+    failing_result.add_failure(
+        rule="BlockingRule",
+        reason="violation",
+        rule_mode=RuleMode.BLOCKING,
+        risk_value=RuleRisk.HIGH,
+        granularity=RuleGranularity.STACK,
+    )
+    runner = CliRunner()
+    with patch("cfripper.cli.process_template") as patched:
+        patched.return_value = failing_result
+        result = runner.invoke(undertest.cli, [str(template)])
+
+    assert result.exit_code == 2, result.output
+
+
+def test_cli_exit_code_1_when_a_rule_crashed():
+    # A crashed rule means the scan did not finish, so it must not share the
+    # "scanned successfully but invalid" exit code.
+    template = FIXTURE_ROOT_PATH / "others" / "iam_role.json"
+    incomplete_result = Result()
+    incomplete_result.add_exception("CrashingRule", RuntimeError("boom"))
+    runner = CliRunner()
+    with patch("cfripper.cli.process_template") as patched:
+        patched.return_value = incomplete_result
+        result = runner.invoke(undertest.cli, [str(template)])
+
+    assert result.exit_code == 1, result.output
+
+
+def test_cli_exit_code_1_takes_precedence_over_blocking_failure():
+    template = FIXTURE_ROOT_PATH / "others" / "iam_role.json"
+    mixed_result = Result()
+    mixed_result.add_failure(
+        rule="BlockingRule",
+        reason="violation",
+        rule_mode=RuleMode.BLOCKING,
+        risk_value=RuleRisk.HIGH,
+        granularity=RuleGranularity.STACK,
+    )
+    mixed_result.add_exception("CrashingRule", RuntimeError("boom"))
+    runner = CliRunner()
+    with patch("cfripper.cli.process_template") as patched:
+        patched.return_value = mixed_result
+        result = runner.invoke(undertest.cli, [str(template)])
+
+    assert result.exit_code == 1, result.output

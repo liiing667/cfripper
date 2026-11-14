@@ -23,7 +23,7 @@ class RuleProcessor:
             try:
                 result += rule.invoke(cfmodel, extras)
             except Exception as other_exception:
-                result.add_exception(other_exception)
+                result.add_exception(type(rule).__name__, other_exception)
                 logger.exception(
                     "{} crashed with {} for project - {}, service - {}, stack - {}".format(
                         type(rule).__name__,

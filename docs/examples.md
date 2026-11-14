@@ -61,7 +61,7 @@ def handler(event, context):
         return {
             "valid": result.valid,
             "failures": [failure.serializable() for failure in result.get_failures()],
-            "exceptions": [x.args[0] for x in result.exceptions],
+            "exceptions": [exception.serializable() for exception in result.exceptions],
         }
     except Exception:
         logger.exception("Error while running lambda")

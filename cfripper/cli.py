@@ -77,6 +77,10 @@ def format_result_txt(result: Result) -> str:
         result_lines.append("Monitored issues found:")
         [result_lines.append(f"\t- {r.rule}: {r.reason}") for r in monitoring_rules]
 
+    if result.exceptions:
+        result_lines.append("Exceptions raised while scanning (scan did not finish):")
+        [result_lines.append(f"\t- {e.rule}: {e.exception_type}: {e.exception_message}") for e in result.exceptions]
+
     return "\n".join(result_lines)
 
 
@@ -125,9 +129,14 @@ def format_result_junit(result: Result, template_name: str = JUNIT_TESTSUITE_NAM
     suite.set("skipped", "0")
 
     for exception in result.exceptions:
-        case = ET.SubElement(suite, "testcase", {"name": f"exception: {type(exception).__name__}"})
-        error = ET.SubElement(case, "error", {"message": str(exception)})
-        error.set("type", type(exception).__name__)
+        case = ET.SubElement(
+            suite,
+            "testcase",
+            {"name": f"exception: {exception.rule}: {exception.exception_type}"},
+        )
+        error = ET.SubElement(case, "error", {"message": exception.exception_message})
+        error.set("type", exception.exception_type)
+        error.text = f"{exception.exception_type}: {exception.exception_message}\nrule: {exception.rule}"
 
     for failure in result.failures:
         case = ET.SubElement(suite, "testcase", {"name": failure.rule})
@@ -175,7 +184,7 @@ def process_template(
     rules_filters_folder: Optional[str],
     aws_account_id: Optional[str],
     aws_principals: Optional[List[str]],
-) -> bool:
+) -> Result:
     logging.info(f"Analysing {template.name}...")
 
     cfmodel = get_cfmodel(template)
@@ -192,7 +201,7 @@ def process_template(
 
     output_handling(template.name, formatted_result, output_format, output_folder)
 
-    return result.valid
+    return result
 
 
 def validate_aws_account_id(ctx: click.Context, param: str, value: str) -> Optional[str]:
@@ -277,7 +286,7 @@ def cli(templates, logging_level, resolve_parameters, **kwargs):
     Analyse AWS Cloudformation templates passed by parameter.
     Exit codes:
       - 0 = all templates valid and scanned successfully
-      - 1 = error / issue in scanning at least one template
+      - 1 = at least one template did not finish scanning (a rule raised an exception)
       - 2 = at least one template is not valid according to CFRipper (template scanned successfully)
       - 3 = unknown / unhandled exception in scanning the templates
     """
@@ -291,7 +300,11 @@ def cli(templates, logging_level, resolve_parameters, **kwargs):
             process_template(template=template, resolve_parameters=resolve_parameters, **kwargs)
             for template in templates
         ]
-        sys.exit(2 if False in results_of_templates else 0)
+        if any(result.exceptions for result in results_of_templates):
+            sys.exit(1)
+        if any(not result.valid for result in results_of_templates):
+            sys.exit(2)
+        sys.exit(0)
     except FileEmptyException as file_empty:
         sys.exit(file_empty)
     except Exception as e:
