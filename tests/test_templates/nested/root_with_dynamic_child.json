@@ -1,0 +1,18 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    ChildTemplateUrl": {
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "DynamicStack": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": {
+          "Ref": "ChildTemplateUrl"
+        }
+      }
+    }
+  }
+}

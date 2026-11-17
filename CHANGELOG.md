@@ -1,6 +1,13 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Additions
+- Scan locally packaged nested CloudFormation stacks (`AWS::CloudFormation::Stack` resources with relative `TemplateURL` paths), merging every nested template's findings into the root template result with a nesting-chain prefix for traceability
+
+### Fixes
+- Fail closed (exit code 1) when a nested template references a missing local file or forms a reference cycle, instead of scanning only the root template
+
 ## [1.19.0]
 ### Additions
 - Add support for python 3.14

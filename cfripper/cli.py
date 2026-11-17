@@ -18,6 +18,7 @@ from cfripper.exceptions import FileEmptyException
 from cfripper.model.enums import RuleMode
 from cfripper.model.result import Failure, Result
 from cfripper.model.utils import convert_json_or_yaml_to_dict
+from cfripper.nested_stack import NestedStackException, NestedTemplateWalker, iter_nested_templates
 from cfripper.rule_processor import RuleProcessor
 
 LOGGING_LEVELS = {
@@ -56,8 +57,39 @@ def get_cfmodel(template: TextIOWrapper) -> CFModel:
     return cfmodel
 
 
+def get_cfmodel_from_path(path: Path, resolve: bool, resolve_parameters: Optional[Dict]) -> CFModel:
+    """Load and optionally resolve a template located at ``path``."""
+    with path.open("r") as template:
+        cfmodel = get_cfmodel(template)
+    if resolve:
+        cfmodel = cfmodel.resolve(resolve_parameters)
+    return cfmodel
+
+
 def analyse_template(cfmodel: CFModel, rule_processor: RuleProcessor, config: Config) -> Result:
     return rule_processor.process_cf_template(cfmodel, config)
+
+
+def _prefix_failures(result: Result, prefix: str) -> Result:
+    """Return a copy of ``result`` whose failure reasons carry a nesting prefix.
+
+    The prefix records which nested template a finding came from, so a merged
+    package-level result stays traceable. Exceptions are left untouched: their
+    origin is already logged by the rule processor.
+    """
+    prefixed = Result(exceptions=list(result.exceptions))
+    for failure in result.failures:
+        prefixed.add_failure(
+            rule=failure.rule,
+            reason=f"{prefix}{failure.reason}",
+            rule_mode=failure.rule_mode,
+            risk_value=failure.risk_value,
+            granularity=failure.granularity,
+            resource_ids=set(failure.resource_ids or []),
+            resource_types=set(failure.resource_types or []),
+            actions=set(failure.actions or []),
+        )
+    return prefixed
 
 
 def format_result_json(result: Result) -> str:
@@ -184,7 +216,21 @@ def process_template(
 
     config, rule_processor = init_cfripper(rules_config_file, rules_filters_folder, aws_account_id, aws_principals)
 
-    result = analyse_template(cfmodel, rule_processor, config)
+    root_path = Path(template.name).resolve()
+    walker = NestedTemplateWalker(load_cfmodel=lambda path: get_cfmodel_from_path(path, resolve, resolve_parameters))
+    nesting_root = walker.walk(root_path, root_cfmodel=cfmodel)
+
+    # Every template in the package is scanned with the same rules and merged
+    # into one result, so a clean root cannot hide a violation in a child.
+    result = Result()
+    for nested in iter_nested_templates(nesting_root):
+        if not nested.is_root:
+            logging.info(f"Analysing nested template {nested.nesting_chain(root_path.name)}...")
+        template_result = analyse_template(nested.cfmodel, rule_processor, config)
+        if nested.is_root:
+            result = result + template_result
+        else:
+            result = result + _prefix_failures(template_result, f"[{nested.nesting_chain(root_path.name)}] ")
 
     # The JUnit suite is named after the template so a multi-template run
     # produces distinguishable suites in one report.
@@ -294,6 +340,12 @@ def cli(templates, logging_level, resolve_parameters, **kwargs):
         sys.exit(2 if False in results_of_templates else 0)
     except FileEmptyException as file_empty:
         sys.exit(file_empty)
+    except NestedStackException as nested_stack_error:
+        # A broken package (missing local template or a reference cycle) must
+        # fail closed rather than pass on the strength of the root template.
+        logging.error(str(nested_stack_error))
+        click.echo(str(nested_stack_error), err=True)
+        sys.exit(1)
     except Exception as e:
         logging.exception(
             "Unhandled exception raised, please create an issue with the error message at "

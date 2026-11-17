@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  FirstStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: shared_child.yaml
+  SecondStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: shared_child.yaml

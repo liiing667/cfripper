@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 from xml.etree import ElementTree as ET
 
@@ -10,6 +11,20 @@ from cfripper.cli import format_result, format_result_junit
 from cfripper.model.enums import RuleGranularity, RuleMode, RuleRisk
 from cfripper.model.result import Result
 from tests.utils import FIXTURE_ROOT_PATH
+
+NESTED_FIXTURE_PATH = FIXTURE_ROOT_PATH / "nested"
+
+
+def _runner_output(result, capsys) -> str:
+    """Return CLI output regardless of which capture layer holds it.
+
+    Depending on whether an earlier test reconfigured logging (pytest's live
+    logging then suspends global capture while a ``CliRunner`` command runs),
+    the command's stdout is either held by the runner or by pytest's ``capsys``.
+    Merging both keeps the assertions independent of test ordering.
+    """
+    captured = capsys.readouterr()
+    return result.output + captured.out + captured.err
 
 
 @pytest.mark.parametrize(
@@ -227,3 +242,96 @@ def test_cli_accepts_junit_format_and_names_the_suite_after_the_template():
     # so a report from several templates stays readable.
     assert result.exit_code == 0, result.output
     assert output_format == "junit"
+
+
+# --- Nested stack packages --------------------------------------------------
+
+
+def test_cli_scans_nested_templates_and_reports_findings_with_a_nesting_prefix(capsys):
+    # Given a clean root template whose child contains a wildcard principal.
+    runner = CliRunner()
+
+    # When the CLI scans the package.
+    result = runner.invoke(
+        undertest.cli,
+        [str(NESTED_FIXTURE_PATH / "root_with_wildcard_child.json"), "--format", "txt"],
+    )
+
+    # Then the child template is scanned and its blocking failure makes the
+    # whole package invalid, with the nesting chain attached to the reason.
+    assert result.exit_code == 2, result.output
+    output = _runner_output(result, capsys)
+    assert "FullWildcardPrincipalRule" in output
+    assert "[root_with_wildcard_child.json > ChildStack/child_with_wildcard_principal.json]" in output
+
+
+def test_cli_follows_deeply_nested_templates_through_subdirectories(capsys):
+    # Given a root -> sub/middle -> sub/leaf chain spanning directories.
+    runner = CliRunner()
+
+    # When the CLI scans the package with an account id so cross-account trust
+    # is evaluated against a known home account.
+    result = runner.invoke(
+        undertest.cli,
+        [str(NESTED_FIXTURE_PATH / "root_with_deep_chain.yaml"), "--aws-account-id", "123456789012"],
+    )
+
+    # Then the leaf is reached and its cross-account trust is reported.
+    assert result.exit_code == 2, result.output
+    output = _runner_output(result, capsys)
+    assert "CrossAccountTrustRule" in output
+    assert "MiddleStack/LeafStack/leaf_cross_account.json" in output
+
+
+def test_cli_clean_nested_package_is_valid_and_keeps_single_template_output_shape(capsys):
+    # Given a root and child without blocking findings.
+    runner = CliRunner()
+
+    # When the CLI scans them as JSON, the format used by automation.
+    result = runner.invoke(
+        undertest.cli,
+        [str(NESTED_FIXTURE_PATH / "clean_root.json"), "--format", "json"],
+    )
+
+    # Then the package is valid and the output schema is the plain Result one.
+    assert result.exit_code == 0, result.output
+    payload = json.loads(_runner_output(result, capsys))
+    assert set(payload.keys()) == {"exceptions", "failures"}
+
+
+def test_cli_missing_nested_template_fails_closed(capsys):
+    # Given a package whose local TemplateURL target does not exist.
+    runner = CliRunner()
+
+    # When the CLI scans it.
+    result = runner.invoke(undertest.cli, [str(NESTED_FIXTURE_PATH / "root_missing_child.json")])
+
+    # Then the run fails (exit 1, scan error) rather than passing on the root.
+    assert result.exit_code == 1
+    assert "does not exist" in _runner_output(result, capsys)
+
+
+def test_cli_nested_template_cycle_fails_closed(capsys):
+    # Given two templates referencing each other.
+    runner = CliRunner()
+
+    # When the CLI scans the package.
+    result = runner.invoke(undertest.cli, [str(NESTED_FIXTURE_PATH / "cycle_a.yaml")])
+
+    # Then the cycle is reported as a scan error and the run fails closed.
+    assert result.exit_code == 1
+    assert "cycle" in _runner_output(result, capsys).lower()
+
+
+def test_cli_remote_and_dynamic_template_urls_do_not_break_the_scan(capsys):
+    # Given a root that only references a remote URL and an intrinsic Ref,
+    # neither of which can be mapped to a local file.
+    runner = CliRunner()
+
+    # When the CLI scans it.
+    result = runner.invoke(undertest.cli, [str(NESTED_FIXTURE_PATH / "root_with_remote_child.json")])
+    _runner_output(result, capsys)
+
+    # Then the root itself is still scanned and no failure is raised for the
+    # unreachable references.
+    assert result.exit_code == 0, result.output

@@ -19,6 +19,27 @@ Analysing /tmp/root_bypass.json...
 Valid: True
 ```
 
+### Scanning nested stack packages
+When a template contains an `AWS::CloudFormation::Stack` resource whose
+`TemplateURL` is a relative local path, CFRipper walks the whole package and
+scans every nested template with the same rules, merging all findings into the
+root template's result. Findings from child templates carry a nesting prefix
+so their origin stays traceable, for example
+`[root.yaml > ChildStack/child.yaml]`. Relative paths are resolved against the
+directory of the template that references them.
+
+Remote `TemplateURL` values (`http://`, `https://`, `s3://`) and intrinsic
+functions such as `Ref` or `Fn::Sub` cannot be mapped to a local file, so they
+are skipped with a warning rather than analysed.
+
+The scan fails closed on a broken package:
+
+- a local `TemplateURL` pointing at a missing file exits with code `1`;
+- a reference cycle between templates exits with code `1`.
+
+In both cases the package never passes merely because the root template is
+clean.
+
 ### Using resolve flag
 ```bash
 $ cfripper /tmp/root.yaml /tmp/root_bypass.json --format txt --resolve
