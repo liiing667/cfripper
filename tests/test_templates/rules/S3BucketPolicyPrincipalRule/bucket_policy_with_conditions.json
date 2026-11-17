@@ -1,0 +1,52 @@
+{
+  "Resources": {
+    "NarrowedBySourceAccount": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "narrowed-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "NarrowedBySourceAccount",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::999999999999:root"
+              },
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::narrowed-bucket/*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "OpenWithUnrelatedCondition": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "OpenWithUnrelatedCondition",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::888888888888:root"
+              },
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "true"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

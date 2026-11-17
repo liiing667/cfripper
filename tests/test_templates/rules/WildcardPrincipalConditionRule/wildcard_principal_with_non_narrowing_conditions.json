@@ -1,0 +1,246 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "ForAllValuesCondition": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          "arn:aws:sqs:eu-west-1:123456789012:open-queue"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "ForAllValuesCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sqs:SendMessage",
+              "Resource": "arn:aws:sqs:eu-west-1:123456789012:open-queue",
+              "Condition": {
+                "ForAllValues:StringEquals": {
+                  "aws:PrincipalOrgID": [
+                    "o-a1b2c3d4e5"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ForAnyValueCondition": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          "arn:aws:sqs:eu-west-1:123456789012:open-queue"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "ForAnyValueCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sqs:SendMessage",
+              "Resource": "arn:aws:sqs:eu-west-1:123456789012:open-queue",
+              "Condition": {
+                "ForAnyValue:StringEquals": {
+                  "aws:PrincipalAccount": [
+                    "123456789012"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "NegatedOperatorCondition": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Properties": {
+        "Topics": [
+          "arn:aws:sns:eu-west-1:123456789012:open-topic"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "NegatedOperatorCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sns:Publish",
+              "Resource": "arn:aws:sns:eu-west-1:123456789012:open-topic",
+              "Condition": {
+                "StringNotEquals": {
+                  "aws:SourceAccount": "123456789012"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "IfExistsCondition": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Properties": {
+        "Topics": [
+          "arn:aws:sns:eu-west-1:123456789012:open-topic"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "IfExistsCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sns:Publish",
+              "Resource": "arn:aws:sns:eu-west-1:123456789012:open-topic",
+              "Condition": {
+                "StringEqualsIfExists": {
+                  "aws:SourceAccount": "123456789012"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "NullCondition": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "NullCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "Null": {
+                  "aws:PrincipalAccount": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "WildcardConditionValue": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "WildcardConditionValue",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "ArnLike": {
+                  "aws:SourceArn": "arn:aws:s3:::*"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "MalformedAccountCondition": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "MalformedAccountCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "12345"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "UnrelatedParameterCondition": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "UnrelatedParameterCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "true"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "IntrinsicConditionValue": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "IntrinsicConditionValue",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:aws:s3:::${BucketName}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "MixedNarrowingAndUnrelatedCondition": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "open-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "MixedNarrowingAndUnrelatedCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::open-bucket/*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012"
+                },
+                "Bool": {
+                  "aws:SecureTransport": "true"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

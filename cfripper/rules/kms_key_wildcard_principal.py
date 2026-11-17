@@ -9,6 +9,7 @@ from pycfmodel.model.resources.kms_key import KMSKey
 from cfripper.model.enums import RuleGranularity
 from cfripper.model.result import Result
 from cfripper.rules.base_rules import Rule
+from cfripper.rules.condition_helpers import condition_restricts_principal
 
 logger = logging.getLogger(__file__)
 
@@ -43,21 +44,22 @@ class KMSKeyWildcardPrincipalRule(Rule):
                         if statement.Effect == "Allow" and filtered_principals:
                             for principal in filtered_principals:
                                 if statement.Condition and statement.Condition.dict():
-                                    # Ignoring condition checks since they will get reviewed in other
-                                    # rules and future improvements
-                                    pass
-                                else:
-                                    self.add_failure_to_result(
-                                        result,
-                                        self.REASON.format(logical_id),
-                                        resource_ids={logical_id},
-                                        context={
-                                            "config": self._config,
-                                            "extras": extras,
-                                            "logical_id": logical_id,
-                                            "resource": resource,
-                                            "statement": statement,
-                                            "principal": principal,
-                                        },
-                                    )
+                                    # Only a condition proven to narrow the principal down to explicit
+                                    # accounts, organisations or ARNs neutralises the wildcard. When it
+                                    # cannot be proven, the wildcard principal keeps being reported.
+                                    if condition_restricts_principal(statement.Condition):
+                                        continue
+                                self.add_failure_to_result(
+                                    result,
+                                    self.REASON.format(logical_id),
+                                    resource_ids={logical_id},
+                                    context={
+                                        "config": self._config,
+                                        "extras": extras,
+                                        "logical_id": logical_id,
+                                        "resource": resource,
+                                        "statement": statement,
+                                        "principal": principal,
+                                    },
+                                )
         return result

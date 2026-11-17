@@ -1,0 +1,177 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "RestrictedBySourceAccount": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          "arn:aws:sqs:eu-west-1:123456789012:restricted-queue"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RestrictedBySourceAccount",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sqs:SendMessage",
+              "Resource": "arn:aws:sqs:eu-west-1:123456789012:restricted-queue",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RestrictedByPrincipalAccount": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          "arn:aws:sqs:eu-west-1:123456789012:restricted-queue"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RestrictedByPrincipalAccount",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "*"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": "arn:aws:sqs:eu-west-1:123456789012:restricted-queue",
+              "Condition": {
+                "StringEquals": {
+                  "aws:PrincipalAccount": [
+                    "123456789012",
+                    "210987654321"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RestrictedByOrganisation": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Properties": {
+        "Topics": [
+          "arn:aws:sns:eu-west-1:123456789012:restricted-topic"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RestrictedByOrganisation",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sns:Publish",
+              "Resource": "arn:aws:sns:eu-west-1:123456789012:restricted-topic",
+              "Condition": {
+                "StringEquals": {
+                  "aws:PrincipalOrgID": "o-a1b2c3d4e5"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RestrictedByOrganisationPath": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Properties": {
+        "Topics": [
+          "arn:aws:sns:eu-west-1:123456789012:restricted-topic"
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "RestrictedByOrganisationPath",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sns:Publish",
+              "Resource": "arn:aws:sns:eu-west-1:123456789012:restricted-topic",
+              "Condition": {
+                "StringEquals": {
+                  "aws:PrincipalOrgPaths": "o-a1b2c3d4e5/ou-abcd-1234-efgh"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RestrictedBySourceArn": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "restricted-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "RestrictedBySourceArn",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::restricted-bucket/*",
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": "arn:aws:sns:eu-west-1:123456789012:source-topic"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RestrictedByPrincipalArnLike": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "restricted-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "RestrictedByPrincipalArnLike",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::restricted-bucket/*",
+              "Condition": {
+                "ArnLike": {
+                  "aws:PrincipalArn": "arn:aws:iam::123456789012:role/app-role"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RestrictedByAccountAndOrganisation": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": "restricted-bucket",
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Sid": "RestrictedByAccountAndOrganisation",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": "arn:aws:s3:::restricted-bucket/*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012",
+                  "aws:PrincipalOrgID": "o-a1b2c3d4e5"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

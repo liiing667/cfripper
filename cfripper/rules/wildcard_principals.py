@@ -25,6 +25,7 @@ from cfripper.model.enums import RuleGranularity, RuleRisk
 from cfripper.model.result import Result
 from cfripper.model.utils import get_account_id_from_principal
 from cfripper.rules.base_rules import PrincipalCheckingRule
+from cfripper.rules.condition_helpers import condition_restricts_principal
 
 logger = logging.getLogger(__file__)
 
@@ -116,24 +117,27 @@ class GenericWildcardPrincipalRule(PrincipalCheckingRule):
                     if identifier in self._get_allowed_from_config():
                         continue
                     if statement.Condition and statement.Condition.dict():
-                        # Ignoring condition checks since they will get reviewed in other rules and future improvements
-                        continue
-                    else:
-                        self.add_failure_to_result(
-                            result,
-                            self.REASON_WILDCARD_PRINCIPAL.format(logical_id, principal),
-                            resource_ids={logical_id},
-                            resource_types={resource_type},
-                            context={
-                                "config": self._config,
-                                "extras": extras,
-                                "logical_id": logical_id,
-                                "resource": resource,
-                                "statement": statement,
-                                "principal": principal,
-                                "account_id": identifier,
-                            },
-                        )
+                        # A condition only neutralises the wildcard principal when it can be proven
+                        # to narrow the requester down to explicit accounts, organisations or ARNs.
+                        # Conditions that cannot prove that (negation, IfExists, ForAllValues, Null,
+                        # wildcard/unresolved values, unrelated parameters...) keep the failure.
+                        if condition_restricts_principal(statement.Condition):
+                            continue
+                    self.add_failure_to_result(
+                        result,
+                        self.REASON_WILDCARD_PRINCIPAL.format(logical_id, principal),
+                        resource_ids={logical_id},
+                        resource_types={resource_type},
+                        context={
+                            "config": self._config,
+                            "extras": extras,
+                            "logical_id": logical_id,
+                            "resource": resource,
+                            "statement": statement,
+                            "principal": principal,
+                            "account_id": identifier,
+                        },
+                    )
 
 
 class PartialWildcardPrincipalRule(GenericWildcardPrincipalRule):

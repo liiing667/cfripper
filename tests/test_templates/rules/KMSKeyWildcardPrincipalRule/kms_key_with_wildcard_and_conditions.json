@@ -1,0 +1,72 @@
+{
+  "Resources": {
+    "NarrowedBySourceAccount": {
+      "Type": "AWS::KMS::Key",
+      "Properties": {
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "NarrowedBySourceAccount",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "kms:Encrypt",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "123456789012"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "OpenWithForAllValuesCondition": {
+      "Type": "AWS::KMS::Key",
+      "Properties": {
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "OpenWithForAllValuesCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "kms:Encrypt",
+              "Resource": "*",
+              "Condition": {
+                "ForAllValues:StringEquals": {
+                  "aws:PrincipalOrgID": [
+                    "o-a1b2c3d4e5"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "OpenWithUnrelatedCondition": {
+      "Type": "AWS::KMS::Key",
+      "Properties": {
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "OpenWithUnrelatedCondition",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "kms:Encrypt",
+              "Resource": "*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "true"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

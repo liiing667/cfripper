@@ -9,6 +9,7 @@ from cfripper.config.regex import REGEX_HAS_STAR_OR_STAR_AFTER_COLON
 from cfripper.model.enums import RuleGranularity, RuleRisk
 from cfripper.model.result import Result
 from cfripper.rules.base_rules import BaseDangerousPolicyActions, ResourceSpecificRule
+from cfripper.rules.condition_helpers import condition_restricts_principal
 
 logger = logging.getLogger(__file__)
 
@@ -84,22 +85,23 @@ class SQSQueuePolicyPublicRule(ResourceSpecificRule):
             for statement in resource.Properties.PolicyDocument.statement_as_list():
                 if statement.Effect == "Allow" and statement.principals_with(REGEX_HAS_STAR_OR_STAR_AFTER_COLON):
                     if statement.Condition and statement.Condition.dict():
-                        # Ignoring condition checks since they will get reviewed in other rules and future improvements
-                        pass
-                    else:
-                        self.add_failure_to_result(
-                            result,
-                            self.REASON.format(logical_id),
-                            resource_ids={logical_id},
-                            resource_types={resource.Type},
-                            context={
-                                "config": self._config,
-                                "extras": extras,
-                                "logical_id": logical_id,
-                                "resource": resource,
-                                "statement": statement,
-                            },
-                        )
+                        # Only a condition proven to narrow the principal down to explicit accounts,
+                        # organisations or ARNs neutralises the wildcard; otherwise keep the failure.
+                        if condition_restricts_principal(statement.Condition):
+                            continue
+                    self.add_failure_to_result(
+                        result,
+                        self.REASON.format(logical_id),
+                        resource_ids={logical_id},
+                        resource_types={resource.Type},
+                        context={
+                            "config": self._config,
+                            "extras": extras,
+                            "logical_id": logical_id,
+                            "resource": resource,
+                            "statement": statement,
+                        },
+                    )
         return result
 
 

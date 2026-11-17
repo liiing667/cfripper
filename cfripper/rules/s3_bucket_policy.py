@@ -8,6 +8,7 @@ from cfripper.model.enums import RuleGranularity, RuleRisk
 from cfripper.model.result import Result
 from cfripper.model.utils import get_account_id_from_principal
 from cfripper.rules.base_rules import PrincipalCheckingRule, ResourceSpecificRule
+from cfripper.rules.condition_helpers import condition_restricts_principal
 
 logger = logging.getLogger(__file__)
 
@@ -51,22 +52,23 @@ class S3BucketPolicyPrincipalRule(PrincipalCheckingRule, ResourceSpecificRule):
                     continue
                 if account_id not in self.valid_principals:
                     if statement.Condition and statement.Condition.dict():
-                        # Ignoring condition checks since they will get reviewed in other rules and future improvements
-                        pass
-                    else:
-                        self.add_failure_to_result(
-                            result,
-                            self.REASON.format(logical_id, account_id),
-                            resource_ids={logical_id},
-                            resource_types={resource.Type},
-                            context={
-                                "config": self._config,
-                                "extras": extras,
-                                "logical_id": logical_id,
-                                "resource": resource,
-                                "statement": statement,
-                                "principal": principal,
-                                "account_id": account_id,
-                            },
-                        )
+                        # Only a condition proven to narrow the principal down to explicit accounts,
+                        # organisations or ARNs neutralises the non-allowed principal.
+                        if condition_restricts_principal(statement.Condition):
+                            continue
+                    self.add_failure_to_result(
+                        result,
+                        self.REASON.format(logical_id, account_id),
+                        resource_ids={logical_id},
+                        resource_types={resource.Type},
+                        context={
+                            "config": self._config,
+                            "extras": extras,
+                            "logical_id": logical_id,
+                            "resource": resource,
+                            "statement": statement,
+                            "principal": principal,
+                            "account_id": account_id,
+                        },
+                    )
         return result

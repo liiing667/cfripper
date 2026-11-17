@@ -1,6 +1,10 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Fixes
+- Wildcard principal rules now analyse statement `Condition` blocks instead of skipping any statement that has one. A wildcard principal is only suppressed when the condition is proven to narrow the requester to explicit accounts, organisations or principal ARNs (`aws:PrincipalAccount`, `aws:SourceAccount`, `aws:PrincipalOrgID`, `aws:PrincipalOrgPaths`, `aws:PrincipalArn`, `aws:SourceArn`). Negated operators, `*IfExists`, `Null`, `ForAllValues`/`ForAnyValue` quantifiers, wildcard or unresolved values and conditions on unrelated parameters keep the failure.
+
 ## [1.19.0]
 ### Additions
 - Add support for python 3.14
