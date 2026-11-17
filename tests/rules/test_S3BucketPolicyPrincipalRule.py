@@ -40,6 +40,16 @@ def test_failures_are_raised(bad_template):
                 resource_ids={"S3BucketPolicy"},
                 resource_types={"AWS::S3::BucketPolicy"},
             ),
+            Failure(
+                granularity=RuleGranularity.RESOURCE,
+                reason="S3 Bucket S3BucketPolicy2 policy has non-allowed principals *",
+                risk_value=RuleRisk.HIGH,
+                rule="S3BucketPolicyPrincipalRule",
+                rule_mode=RuleMode.BLOCKING,
+                actions=None,
+                resource_ids={"S3BucketPolicy2"},
+                resource_types={"AWS::S3::BucketPolicy"},
+            ),
         ],
     )
 

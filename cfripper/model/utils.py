@@ -1,7 +1,10 @@
 import json
 import logging
 import re
+import unicodedata
 from contextlib import suppress
+from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
 from typing import Optional
 from urllib.parse import unquote
@@ -125,15 +128,88 @@ def get_account_id_from_sts_arn(arn: str) -> Optional[str]:
     return None
 
 
+class PrincipalKind(str, Enum):
+    """Types of identities a principal value can resolve to."""
+
+    ACCOUNT_ID = "account_id"
+    CANONICAL_ID = "canonical_id"
+    AWS_SERVICE = "aws_service"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class PrincipalIdentity:
+    """
+    Normalized identity behind a raw principal value.
+
+    `identifier` is the comparable form of the identity (account id, canonical id,
+    service name or normalized principal) while `source` keeps the original value
+    for reporting.
+    """
+
+    kind: PrincipalKind
+    identifier: str
+    source: str
+
+
+"""
+Check for ARNs from any AWS partition (aws, aws-cn, aws-us-gov, ...).
+The ARN scheme and service are matched case-insensitively so that case
+differences don't make the same identity look like two different ones.
+Groups: partition, service, region, account id, resource.
+"""
+REGEX_PRINCIPAL_ARN = re.compile(r"^arn:([^:]+):([^:]+):([^:]*):([^:]*):(.+)$", re.IGNORECASE)
+
+"""
+Check for canonical user IDs (64 hexadecimal characters, any casing).
+"""
+REGEX_CANONICAL_ID = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
+
+AWS_SERVICE_PRINCIPAL_SUFFIXES = (".amazonaws.com", ".amazonaws.com.cn")
+
+
+def normalize_principal(principal: str) -> str:
+    """
+    Return the canonical form of a principal so that encoding and compatibility
+    differences (percent-encoding, unicode compatibility characters such as
+    full-width digits, surrounding whitespace) don't create duplicate identities
+    for the same source.
+    """
+    return unicodedata.normalize("NFKC", unquote(principal)).strip()
+
+
+def get_principal_identity(principal: str) -> PrincipalIdentity:
+    """
+    Single, reviewable conversion from a raw principal to the identity behind it.
+
+    Every rule that needs to know *who* a principal is should use this function
+    instead of re-implementing its own parsing. Sources that can't be resolved
+    are returned as `PrincipalKind.UNKNOWN` so callers keep treating them as risky
+    instead of silently allowing them.
+    """
+    normalized = normalize_principal(principal)
+
+    if normalized.isascii() and normalized.isdigit():
+        return PrincipalIdentity(PrincipalKind.ACCOUNT_ID, normalized, principal)
+
+    arn_match = REGEX_PRINCIPAL_ARN.match(normalized)
+    if arn_match:
+        _partition, service, _region, account_id, _resource = arn_match.groups()
+        if service.lower() in ("iam", "sts") and account_id.isascii() and account_id.isdigit():
+            return PrincipalIdentity(PrincipalKind.ACCOUNT_ID, account_id, principal)
+        return PrincipalIdentity(PrincipalKind.UNKNOWN, normalized, principal)
+
+    if REGEX_CANONICAL_ID.match(normalized):
+        return PrincipalIdentity(PrincipalKind.CANONICAL_ID, normalized.lower(), principal)
+
+    if normalized.lower().endswith(AWS_SERVICE_PRINCIPAL_SUFFIXES):
+        return PrincipalIdentity(PrincipalKind.AWS_SERVICE, normalized.lower(), principal)
+
+    return PrincipalIdentity(PrincipalKind.UNKNOWN, normalized, principal)
+
+
 def get_account_id_from_principal(principal: str) -> Optional[str]:
-    if principal.isnumeric():
-        return principal
-
-    aws_service = get_aws_service_from_arn(principal)
-    if aws_service not in ["iam", "sts"]:
-        return None
-
-    if aws_service == "iam":
-        return get_account_id_from_iam_arn(principal)
-    elif aws_service == "sts":
-        return get_account_id_from_sts_arn(principal)
+    identity = get_principal_identity(principal)
+    if identity.kind is PrincipalKind.ACCOUNT_ID:
+        return identity.identifier
+    return None

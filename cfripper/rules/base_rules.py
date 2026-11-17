@@ -10,6 +10,7 @@ from cfripper.config.filter import Filter
 from cfripper.config.rule_config import RuleConfig
 from cfripper.model.enums import RuleGranularity, RuleMode, RuleRisk
 from cfripper.model.result import Result
+from cfripper.model.utils import get_principal_identity
 
 logger = logging.getLogger(__file__)
 
@@ -140,6 +141,7 @@ class PrincipalCheckingRule(Rule, ABC):
     """
 
     _valid_principals = None
+    _allowed_principal_identities = None
 
     def _get_allowed_from_config(self, services: List[str] = None) -> Set[str]:
         if services is None:
@@ -160,6 +162,19 @@ class PrincipalCheckingRule(Rule, ABC):
             if self._config.aws_account_id:
                 self._valid_principals.add(self._config.aws_account_id)
         return self._valid_principals
+
+    @property
+    def allowed_principal_identities(self) -> Set[str]:
+        """
+        Normalized identities behind `valid_principals`, plus the raw values, so that
+        account configuration keeps working no matter which form a principal takes
+        in a template (account id, ARN from any partition, canonical id or service).
+        """
+        if self._allowed_principal_identities is None:
+            self._allowed_principal_identities = set(self.valid_principals) | {
+                get_principal_identity(principal).identifier for principal in self.valid_principals
+            }
+        return self._allowed_principal_identities
 
 
 class BaseDangerousPolicyActions(ResourceSpecificRule, ABC):

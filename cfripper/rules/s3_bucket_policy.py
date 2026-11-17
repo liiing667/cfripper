@@ -6,7 +6,7 @@ from pycfmodel.model.resources.s3_bucket_policy import S3BucketPolicy
 
 from cfripper.model.enums import RuleGranularity, RuleRisk
 from cfripper.model.result import Result
-from cfripper.model.utils import get_account_id_from_principal
+from cfripper.model.utils import PrincipalKind, get_principal_identity
 from cfripper.rules.base_rules import PrincipalCheckingRule, ResourceSpecificRule
 
 logger = logging.getLogger(__file__)
@@ -46,17 +46,18 @@ class S3BucketPolicyPrincipalRule(PrincipalCheckingRule, ResourceSpecificRule):
 
         for statement in resource.Properties.PolicyDocument._statement_as_list():
             for principal in statement.get_principal_list():
-                account_id = get_account_id_from_principal(principal)
-                if not account_id:
+                identity = get_principal_identity(principal)
+                if identity.kind is PrincipalKind.AWS_SERVICE:
+                    # AWS service principals are not account identities
                     continue
-                if account_id not in self.valid_principals:
+                if identity.identifier not in self.allowed_principal_identities:
                     if statement.Condition and statement.Condition.dict():
                         # Ignoring condition checks since they will get reviewed in other rules and future improvements
                         pass
                     else:
                         self.add_failure_to_result(
                             result,
-                            self.REASON.format(logical_id, account_id),
+                            self.REASON.format(logical_id, identity.identifier),
                             resource_ids={logical_id},
                             resource_types={resource.Type},
                             context={
@@ -66,7 +67,9 @@ class S3BucketPolicyPrincipalRule(PrincipalCheckingRule, ResourceSpecificRule):
                                 "resource": resource,
                                 "statement": statement,
                                 "principal": principal,
-                                "account_id": account_id,
+                                "account_id": (
+                                    identity.identifier if identity.kind is PrincipalKind.ACCOUNT_ID else None
+                                ),
                             },
                         )
         return result

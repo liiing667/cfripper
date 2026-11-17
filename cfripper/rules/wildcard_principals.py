@@ -23,7 +23,7 @@ from pycfmodel.model.resources.sqs_queue_policy import SQSQueuePolicy
 from cfripper.config.regex import REGEX_FULL_WILDCARD_PRINCIPAL, REGEX_PARTIAL_WILDCARD_PRINCIPAL
 from cfripper.model.enums import RuleGranularity, RuleRisk
 from cfripper.model.result import Result
-from cfripper.model.utils import get_account_id_from_principal
+from cfripper.model.utils import get_principal_identity
 from cfripper.rules.base_rules import PrincipalCheckingRule
 
 logger = logging.getLogger(__file__)
@@ -107,8 +107,9 @@ class GenericWildcardPrincipalRule(PrincipalCheckingRule):
             filtered_principals = statement.principals_with(self.FULL_REGEX)
             if statement.Effect == "Allow" and filtered_principals:
                 for principal in filtered_principals:
-                    # if we can't find the account ID it might be a canonical ID
-                    identifier = get_account_id_from_principal(principal) or principal
+                    # Resolve the identity behind the principal (account ID, canonical ID
+                    # or the normalized principal itself when the source is unknown)
+                    identifier = get_principal_identity(principal).identifier
 
                     # Check if account ID / canonical ID is allowed. `self._get_allowed_from_config()` used here
                     # to reduce number of false negatives and only allow exemptions for accounts

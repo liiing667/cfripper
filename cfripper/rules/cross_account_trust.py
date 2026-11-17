@@ -23,7 +23,7 @@ from pycfmodel.model.resources.s3_bucket_policy import S3BucketPolicy
 
 from cfripper.model.enums import RuleGranularity, RuleMode
 from cfripper.model.result import Result
-from cfripper.model.utils import get_account_id_from_principal
+from cfripper.model.utils import PrincipalKind, get_principal_identity
 from cfripper.rules.base_rules import PrincipalCheckingRule
 
 logger = logging.getLogger(__file__)
@@ -70,16 +70,17 @@ class CrossAccountCheckingRule(PrincipalCheckingRule, ABC):
     ):
         if statement.Effect == "Allow":
             for principal in statement.get_principal_list():
-                account_id = get_account_id_from_principal(principal)
+                identity = get_principal_identity(principal)
                 filters_available_context["principal"] = principal
-                filters_available_context["account_id"] = account_id
+                filters_available_context["account_id"] = (
+                    identity.identifier if identity.kind is PrincipalKind.ACCOUNT_ID else None
+                )
                 if (
-                    # checks if principal is a canonical id and is allowed
-                    principal not in self.valid_principals
-                    # if it wasn't a canonical id and contains a valid account id
-                    and account_id not in self.valid_principals
-                    # if principal is an AWS service
-                    and not principal.endswith(".amazonaws.com")
+                    # AWS service principals are not account identities
+                    identity.kind is not PrincipalKind.AWS_SERVICE
+                    # account ids, canonical ids and unknown sources are checked
+                    # against the same normalized set of allowed identities
+                    and identity.identifier not in self.allowed_principal_identities
                 ):
                     if statement.Condition and statement.Condition.dict():
                         # Ignoring condition checks since they will get reviewed in other rules and future improvements
