@@ -1,6 +1,11 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Updates
+- Conservatively expand `Fn::If` into one template variant per branch combination so every conditional `Principal` and `Resource` is evaluated by the rules, with locatable `[conditional branch: ...]` finding suffixes
+- Render unresolvable intrinsic values (`Ref`, `Fn::GetAtt`, `Fn::ImportValue`, ...) inside conditional branches as an unknown wildcard instead of silently ignoring them, while leaving static templates and their historical finding ids unchanged
+
 ## [1.19.0]
 ### Additions
 - Add support for python 3.14

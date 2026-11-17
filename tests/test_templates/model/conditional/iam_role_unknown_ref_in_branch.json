@@ -1,0 +1,38 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Conditions": {
+    "UseExternalTrust": {
+      "Fn::Equals": [
+        "true",
+        "true"
+      ]
+    }
+  },
+  "Resources": {
+    "UnknownPrincipalRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "sts:AssumeRole",
+              "Principal": {
+                "AWS": {
+                  "Fn::If": [
+                    "UseExternalTrust",
+                    {
+                      "Ref": "ExternalTrustArn"
+                    },
+                    "arn:aws:iam::123456789012:root"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
